@@ -12,28 +12,50 @@ interface BarcodeScannerModalProps {
   onOpenCompareWithOptions?: (item: CartItem) => void;
 }
 
+let sharedAudioCtx: AudioContext | null = null;
+
+const initAudioContext = () => {
+  try {
+    if (!sharedAudioCtx) {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        sharedAudioCtx = new AudioContextClass();
+      }
+    }
+    if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
+      sharedAudioCtx.resume().catch((err) => console.warn('AudioContext resume failed:', err));
+    }
+  } catch (err) {
+    console.warn('Failed to initialize AudioContext:', err);
+  }
+};
+
 // Helper to play a synthesized scanner beep using Web Audio API
 const playBeep = () => {
   try {
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
+    initAudioContext();
+    if (!sharedAudioCtx) return;
+
+    // If context is still suspended (blocked by browser), don't fail, just ignore
+    if (sharedAudioCtx.state === 'suspended') {
+      console.warn('AudioContext is suspended; sound is blocked by the browser.');
+      return;
+    }
+
+    const oscillator = sharedAudioCtx.createOscillator();
+    const gainNode = sharedAudioCtx.createGain();
 
     oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime); // 1200Hz sharp beep
+    oscillator.frequency.setValueAtTime(1200, sharedAudioCtx.currentTime); // 1200Hz sharp beep
 
-    gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
+    gainNode.gain.setValueAtTime(0.15, sharedAudioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, sharedAudioCtx.currentTime + 0.12);
 
     oscillator.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
+    gainNode.connect(sharedAudioCtx.destination);
 
     oscillator.start();
-    oscillator.stop(audioCtx.currentTime + 0.15);
-
-    setTimeout(() => {
-      audioCtx.close();
-    }, 200);
+    oscillator.stop(sharedAudioCtx.currentTime + 0.15);
   } catch (error) {
     console.warn('AudioContext beep failed:', error);
   }
@@ -150,6 +172,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
     if (isOpen) {
       setIsScanning(true);
+      initAudioContext();
       startCamera();
 
       return () => {
@@ -235,7 +258,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col justify-between overflow-hidden font-sans">
+    <div
+      onClick={initAudioContext}
+      onTouchStart={initAudioContext}
+      className="fixed inset-0 z-50 bg-black flex flex-col justify-between overflow-hidden font-sans"
+    >
       {/* Top Header */}
       <div className="relative z-20 flex justify-between items-center p-5 pt-8 bg-gradient-to-b from-black/80 to-transparent">
         <button
