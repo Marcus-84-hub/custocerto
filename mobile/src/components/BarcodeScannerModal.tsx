@@ -37,9 +37,16 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const [detectedProduct, setDetectedProduct] = useState<PreseedProduct | null>(null);
   const [isScanning, setIsScanning] = useState(true);
   const [isAnalyzingPhoto, setIsAnalyzingPhoto] = useState(false);
-  const [useRealCamera, setUseRealCamera] = useState(false);
+  const [useRealCamera, setUseRealCamera] = useState(true);
   
   const cameraRef = useRef<any>(null);
+
+  // Request permissions automatically when the camera is requested
+  useEffect(() => {
+    if (isOpen && useRealCamera && (!permission || !permission.granted)) {
+      requestPermission();
+    }
+  }, [isOpen, useRealCamera, permission]);
 
   // Simula detecção automática quando abre o scanner no modo simulado
   useEffect(() => {

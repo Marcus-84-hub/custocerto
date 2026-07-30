@@ -25,33 +25,44 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Auto detect default item on initial opening or when user selects a barcode
+  // Start camera stream when open, and clean up when closed
   useEffect(() => {
+    let activeStream: MediaStream | null = null;
+
+    const startCamera = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        activeStream = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          setCameraActive(true);
+        }
+      } catch (e) {
+        console.warn('Camera access error or unsupported in environment:', e);
+      }
+    };
+
     if (isOpen) {
       setIsScanning(true);
+      startCamera();
+      
       // Simulate detection after 1 second for realistic feedback
       const timer = setTimeout(() => {
         setDetectedProduct(POPULAR_BARCODES[0]); // Detergente Ypê
         setIsScanning(false);
       }, 900);
-      return () => clearTimeout(timer);
+
+      return () => {
+        clearTimeout(timer);
+        if (activeStream) {
+          activeStream.getTracks().forEach(track => track.stop());
+        }
+      };
     } else {
       setDetectedProduct(null);
+      setCameraActive(false);
     }
   }, [isOpen]);
-
-  // Handle actual camera feed if requested
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        setCameraActive(true);
-      }
-    } catch (e) {
-      console.warn('Camera access error or unsupported in environment:', e);
-    }
-  };
 
   const handleSelectBarcode = (prod: PreseedProduct) => {
     setIsScanning(true);
