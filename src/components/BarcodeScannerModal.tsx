@@ -25,17 +25,95 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const isScanningRef = useRef(isScanning);
+  useEffect(() => {
+    isScanningRef.current = isScanning;
+  }, [isScanning]);
+
+  const handleBarcodeScannedReal = async (data: string) => {
+    setIsScanning(false);
+
+    // Busca na lista local primeiro
+    const localMatch = POPULAR_BARCODES.find((b) => b.barcode === data);
+    if (localMatch) {
+      setDetectedProduct(localMatch);
+    } else {
+      try {
+        const response = await fetch(`/api/v1/products/${data}`);
+        const resJson = await response.json();
+        if (resJson.success && resJson.data) {
+          setDetectedProduct({
+            barcode: data,
+            name: resJson.data.name,
+            brand: resJson.data.brand,
+            price: 5.50, // Preço padrão para novos itens
+            unitAmount: resJson.data.unit_weight_grams || 1000,
+            unitType: resJson.data.unit_type || 'g',
+            category: 'Outros',
+            imageUrl: '',
+          });
+        }
+      } catch (err) {
+        // Fallback
+        setDetectedProduct({
+          barcode: data,
+          name: `Item EAN ${data}`,
+          brand: 'Desconhecida',
+          price: 5.50,
+          unitAmount: 1,
+          unitType: 'un',
+          category: 'Outros',
+          imageUrl: '',
+        });
+      }
+    }
+  };
+
   // Start camera stream when open, and clean up when closed
   useEffect(() => {
     let activeStream: MediaStream | null = null;
+    let animationFrameId: number;
+    let isComponentMounted = true;
 
     const startCamera = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        if (!isComponentMounted) {
+          stream.getTracks().forEach(track => track.stop());
+          return;
+        }
         activeStream = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           setCameraActive(true);
+
+          // Se o navegador suportar o BarcodeDetector nativo, rodar detecção em tempo real
+          if ('BarcodeDetector' in window) {
+            const detector = new (window as any).BarcodeDetector({
+              formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e']
+            });
+
+            const scanFrame = async () => {
+              if (videoRef.current && isScanningRef.current && isComponentMounted) {
+                try {
+                  const barcodes = await detector.detect(videoRef.current);
+                  if (barcodes.length > 0 && isComponentMounted && isScanningRef.current) {
+                    const scannedData = barcodes[0].rawValue;
+                    handleBarcodeScannedReal(scannedData);
+                  }
+                } catch (err) {
+                  // ignorar erros de frame individual
+                }
+              }
+              if (isOpen && isComponentMounted) {
+                animationFrameId = requestAnimationFrame(scanFrame);
+              }
+            };
+
+            videoRef.current.onplay = () => {
+              scanFrame();
+            };
+          }
         }
       } catch (e) {
         console.warn('Camera access error or unsupported in environment:', e);
@@ -45,15 +123,10 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     if (isOpen) {
       setIsScanning(true);
       startCamera();
-      
-      // Simulate detection after 1 second for realistic feedback
-      const timer = setTimeout(() => {
-        setDetectedProduct(POPULAR_BARCODES[0]); // Detergente Ypê
-        setIsScanning(false);
-      }, 900);
 
       return () => {
-        clearTimeout(timer);
+        isComponentMounted = false;
+        cancelAnimationFrame(animationFrameId);
         if (activeStream) {
           activeStream.getTracks().forEach(track => track.stop());
         }
@@ -174,8 +247,10 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-[#34c759] rounded-br-2xl" />
         </div>
 
-        <p className="relative z-10 mt-6 text-white text-xs font-semibold tracking-widest uppercase opacity-80 bg-black/40 px-4 py-1.5 rounded-full backdrop-blur-sm">
-          Alinhe o código de barras ou tire foto da etiqueta
+        <p className="relative z-10 mt-6 text-white text-xs font-semibold tracking-widest uppercase opacity-80 bg-black/40 px-4 py-1.5 rounded-full backdrop-blur-sm text-center max-w-xs">
+          {'BarcodeDetector' in window 
+            ? 'Alinhe o código de barras para bipar' 
+            : 'Leitor real requer Chrome no Android/PC. Use foto ou botões abaixo.'}
         </p>
 
         {/* Quick Barcode Selector for Demo Testing */}
