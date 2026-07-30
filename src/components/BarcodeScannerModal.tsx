@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import "barcode-detector/polyfill";
 import { X, Camera, Zap, Sparkles, ShoppingCart, Scale, Upload, Image as ImageIcon } from 'lucide-react';
 import { CartItem } from '../types';
 import { POPULAR_BARCODES, PreseedProduct } from '../data/mockDatabase';
