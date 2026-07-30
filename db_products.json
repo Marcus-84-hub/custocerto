@@ -1,0 +1,50 @@
+{
+  "7891000100101": {
+    "name": "Detergente Ypê Clean 500ml",
+    "brand": "Ypê",
+    "unit_weight_grams": 500,
+    "unit_type": "mL"
+  },
+  "7896006700012": {
+    "name": "Arroz Tio João Tipo 1 5kg",
+    "brand": "Tio João",
+    "unit_weight_grams": 5000,
+    "unit_type": "kg"
+  },
+  "7898012345678": {
+    "name": "Café Orfeu Gourmet 250g",
+    "brand": "Orfeu",
+    "unit_weight_grams": 250,
+    "unit_type": "g"
+  },
+  "7891000200202": {
+    "name": "Leite Integral Ninho 1L",
+    "brand": "Nestlé",
+    "unit_weight_grams": 1000,
+    "unit_type": "L"
+  },
+  "7891000300303": {
+    "name": "Sabão em Pó Omo Sanitizante 1kg",
+    "brand": "Omo",
+    "unit_weight_grams": 1000,
+    "unit_type": "kg"
+  },
+  "7891000400404": {
+    "name": "Feijão Carioca Camil 1kg",
+    "brand": "Camil",
+    "unit_weight_grams": 1000,
+    "unit_type": "kg"
+  },
+  "7891000500505": {
+    "name": "Papel Higiênico Neve 12 rolos",
+    "brand": "Neve",
+    "unit_weight_grams": 12,
+    "unit_type": "rolo"
+  },
+  "7892222222222": {
+    "name": "Produto EAN 7892222222222",
+    "brand": "Desconhecida",
+    "unit_weight_grams": 1000,
+    "unit_type": "g"
+  }
+}

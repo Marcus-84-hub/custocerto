@@ -1,0 +1,6 @@
+{
+  "name": "CustoCerto",
+  "description": "Aplicativo utilitário de uso imediato para somar o carrinho em tempo real, comparar preços por unidade de medida (Leve Mais, Pague Menos) e blindar contra inflação no supermercado.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
