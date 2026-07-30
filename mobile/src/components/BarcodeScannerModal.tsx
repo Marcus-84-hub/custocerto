@@ -9,12 +9,37 @@ import {
   ActivityIndicator,
   Alert,
   ScrollView,
+  Vibration,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { Audio } from 'expo-av';
 import { X, Camera as CameraIcon, Sparkles, ShoppingCart, Scale } from 'lucide-react-native';
 import { CartItem } from '../types';
 import { POPULAR_BARCODES, PreseedProduct } from '../data/mockDatabase';
 import { formatBRL, calculateUnitPrice, getBaseUnitLabel } from '../utils/calculator';
+
+// Helper to play scanner beep and trigger vibration in React Native / Expo
+const playBeep = async () => {
+  try {
+    // Triggers short haptic/vibration feedback (100ms)
+    Vibration.vibrate(100);
+
+    // Loads and plays the beep wav sound
+    const { sound } = await Audio.Sound.createAsync(
+      require('../../assets/beep.wav')
+    );
+    await sound.playAsync();
+
+    // Automatically unload from memory once playback finishes to prevent memory leaks
+    sound.setOnPlaybackStatusUpdate((status) => {
+      if (status.isLoaded && status.didJustFinish) {
+        sound.unloadAsync();
+      }
+    });
+  } catch (error) {
+    console.warn('Failed to play mobile beep sound:', error);
+  }
+};
 
 interface BarcodeScannerModalProps {
   isOpen: boolean;
@@ -66,6 +91,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     setIsScanning(true);
     setDetectedProduct(null);
     setTimeout(() => {
+      playBeep();
       setDetectedProduct(prod);
       setIsScanning(false);
     }, 450);
@@ -74,6 +100,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const handleBarcodeScannedReal = ({ data }: { data: string }) => {
     if (!isScanning) return;
     setIsScanning(false);
+    playBeep();
     
     // Busca na lista local primeiro
     const localMatch = POPULAR_BARCODES.find((b) => b.barcode === data);
@@ -147,6 +174,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         category: data.category || 'Outros',
         imageUrl: photo.uri,
       });
+      playBeep();
     } catch (err) {
       console.error('Error scanning tag:', err);
       Alert.alert(

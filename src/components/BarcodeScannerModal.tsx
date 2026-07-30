@@ -12,6 +12,33 @@ interface BarcodeScannerModalProps {
   onOpenCompareWithOptions?: (item: CartItem) => void;
 }
 
+// Helper to play a synthesized scanner beep using Web Audio API
+const playBeep = () => {
+  try {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime); // 1200Hz sharp beep
+
+    gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    oscillator.start();
+    oscillator.stop(audioCtx.currentTime + 0.15);
+
+    setTimeout(() => {
+      audioCtx.close();
+    }, 200);
+  } catch (error) {
+    console.warn('AudioContext beep failed:', error);
+  }
+};
+
 export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   isOpen,
   onClose,
@@ -32,6 +59,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
   const handleBarcodeScannedReal = async (data: string) => {
     setIsScanning(false);
+    playBeep();
 
     // Busca na lista local primeiro
     const localMatch = POPULAR_BARCODES.find((b) => b.barcode === data);
@@ -141,6 +169,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     setIsScanning(true);
     setDetectedProduct(null);
     setTimeout(() => {
+      playBeep();
       setDetectedProduct(prod);
       setIsScanning(false);
     }, 400);
@@ -175,6 +204,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           category: data.category || 'Limpeza',
           imageUrl: URL.createObjectURL(file),
         });
+        playBeep();
       } catch (err) {
         console.error('Error scanning tag:', err);
         setDetectedProduct(POPULAR_BARCODES[0]);
