@@ -15,7 +15,7 @@ interface BarcodeScannerModalProps {
 
 let sharedAudioCtx: AudioContext | null = null;
 
-const initAudioContext = () => {
+export const initAudioContext = () => {
   try {
     if (!sharedAudioCtx) {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -109,6 +109,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             category: 'Outros',
             imageUrl: '',
           });
+        } else {
+          throw new Error(resJson.error || 'Failed to fetch product data');
         }
       } catch (err) {
         // Fallback

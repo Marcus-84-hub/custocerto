@@ -13,7 +13,7 @@ import {
 import { Header } from './components/Header';
 import { Navigation } from './components/Navigation';
 import { CartView } from './components/CartView';
-import { BarcodeScannerModal } from './components/BarcodeScannerModal';
+import { BarcodeScannerModal, initAudioContext } from './components/BarcodeScannerModal';
 import { UnitComparatorView } from './components/UnitComparatorView';
 import { HistoryView } from './components/HistoryView';
 import { BudgetProfileView } from './components/BudgetProfileView';
@@ -365,7 +365,10 @@ export default function App() {
             budgetLimit={budgetLimit}
             onUpdateQuantity={handleUpdateQuantity}
             onRemoveItem={handleRemoveItem}
-            onOpenScanner={() => setIsScannerOpen(true)}
+            onOpenScanner={() => {
+              initAudioContext();
+              setIsScannerOpen(true);
+            }}
             onOpenManualAdd={() => setIsQuickAddOpen(true)}
             onFinishShopping={handleFinishShopping}
             onCompareItem={handleCompareItem}
