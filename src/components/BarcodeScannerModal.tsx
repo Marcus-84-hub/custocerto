@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import "barcode-detector/polyfill";
+import { BrowserBarcodeReader } from '@zxing/library';
 import { X, Camera, Zap, Sparkles, ShoppingCart, Scale, Upload, Image as ImageIcon } from 'lucide-react';
 import { CartItem } from '../types';
 import { POPULAR_BARCODES, PreseedProduct } from '../data/mockDatabase';
@@ -123,8 +123,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   // Start camera stream when open, and clean up when closed
   useEffect(() => {
     let activeStream: MediaStream | null = null;
-    let animationFrameId: number;
     let isComponentMounted = true;
+    let codeReader: BrowserBarcodeReader | null = null;
 
     const startCamera = async () => {
       try {
@@ -138,33 +138,13 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           videoRef.current.srcObject = stream;
           setCameraActive(true);
 
-          // Se o navegador suportar o BarcodeDetector nativo, rodar detecção em tempo real
-          if ('BarcodeDetector' in window) {
-            const detector = new (window as any).BarcodeDetector({
-              formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e']
-            });
-
-            const scanFrame = async () => {
-              if (videoRef.current && isScanningRef.current && isComponentMounted) {
-                try {
-                  const barcodes = await detector.detect(videoRef.current);
-                  if (barcodes.length > 0 && isComponentMounted && isScanningRef.current) {
-                    const scannedData = barcodes[0].rawValue;
-                    handleBarcodeScannedReal(scannedData);
-                  }
-                } catch (err) {
-                  // ignorar erros de frame individual
-                }
-              }
-              if (isOpen && isComponentMounted) {
-                animationFrameId = requestAnimationFrame(scanFrame);
-              }
-            };
-
-            videoRef.current.onplay = () => {
-              scanFrame();
-            };
-          }
+          codeReader = new BrowserBarcodeReader();
+          codeReader.decodeFromVideoElementContinuously(videoRef.current, (result, error) => {
+            if (result && isComponentMounted && isScanningRef.current) {
+              const scannedData = result.getText();
+              handleBarcodeScannedReal(scannedData);
+            }
+          });
         }
       } catch (e) {
         console.warn('Camera access error or unsupported in environment:', e);
@@ -178,7 +158,9 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
       return () => {
         isComponentMounted = false;
-        cancelAnimationFrame(animationFrameId);
+        if (codeReader) {
+          codeReader.reset();
+        }
         if (activeStream) {
           activeStream.getTracks().forEach(track => track.stop());
         }
@@ -282,7 +264,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       <div className="relative flex-1 flex flex-col items-center justify-center -mt-12">
         {/* Real camera video or background mockup image */}
         {cameraActive ? (
-          <video ref={videoRef} autoPlay playsInline className="absolute inset-0 w-full h-full object-cover" />
+          <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
         ) : (
           <div
             className="absolute inset-0 bg-cover bg-center filter brightness-90"
@@ -306,9 +288,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         </div>
 
         <p className="relative z-10 mt-6 text-white text-xs font-semibold tracking-widest uppercase opacity-80 bg-black/40 px-4 py-1.5 rounded-full backdrop-blur-sm text-center max-w-xs">
-          {'BarcodeDetector' in window 
-            ? 'Alinhe o código de barras para bipar' 
-            : 'Leitor real requer Chrome no Android/PC. Use foto ou botões abaixo.'}
+          Alinhe o código de barras para bipar
         </p>
 
         {/* Quick Barcode Selector for Demo Testing */}
