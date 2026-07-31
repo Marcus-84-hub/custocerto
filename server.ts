@@ -52,30 +52,107 @@ async function startServer() {
       return reply.code(500).send({ success: false, error: "Erro ao buscar produto no banco de dados", details: error.message });
     }
 
-    if (!product) {
-      // Se não existir, criamos um registro padrão e salvamos
-      const newProduct = {
-        ean,
-        name: `Produto EAN ${ean}`,
-        brand: "Desconhecida",
-        unit_weight_grams: 1000,
-        unit_type: "g"
-      };
+    let shouldUpdateOrInsert = !product;
+    let existingProduct = product;
 
-      const { data: insertedProduct, error: insertError } = await supabase
-        .from("products")
-        .insert([newProduct])
-        .select()
-        .single();
+    // Se o produto já existe no banco, mas tem o nome/marca genéricos, tentamos enriquecer
+    if (product && (product.name.startsWith("Produto EAN") || product.brand === "Desconhecida")) {
+      shouldUpdateOrInsert = true;
+    }
 
-      if (insertError) {
-        return reply.code(500).send({ success: false, error: "Erro ao cadastrar produto padrão", details: insertError.message });
+    if (shouldUpdateOrInsert) {
+      let name = existingProduct ? existingProduct.name : `Produto EAN ${ean}`;
+      let brand = existingProduct ? existingProduct.brand : "Desconhecida";
+      let unit_weight_grams = existingProduct ? existingProduct.unit_weight_grams : 1000;
+      let unit_type = existingProduct ? existingProduct.unit_type : "g";
+      let enriched = false;
+
+      try {
+        const offResponse = await fetch(`https://world.openfoodfacts.org/api/v2/product/${ean}.json`, {
+          headers: {
+            "User-Agent": "CustoCertoApp - Web - Version 1.0"
+          }
+        });
+        if (offResponse.ok) {
+          const offData = await offResponse.json();
+          if (offData.status === 1 && offData.product) {
+            const p = offData.product;
+            name = p.product_name_pt || p.product_name || name;
+            brand = p.brands || p.brand_owner || brand;
+            enriched = true;
+            
+            if (p.net_weight_value) {
+              unit_weight_grams = Number(p.net_weight_value);
+              unit_type = p.net_weight_unit || 'g';
+            } else if (p.quantity) {
+              const match = p.quantity.match(/(\d+[,.]?\d*)\s*(g|kg|ml|l|un|sachês|sachê)/i);
+              if (match) {
+                let val = parseFloat(match[1].replace(',', '.'));
+                let unit = match[2].toLowerCase();
+                if (unit === 'kg') {
+                  val = val * 1000;
+                  unit = 'g';
+                } else if (unit === 'l') {
+                  val = val * 1000;
+                  unit = 'ml';
+                } else if (unit === 'sachês' || unit === 'sachê') {
+                  unit = 'un';
+                }
+                unit_weight_grams = val;
+                unit_type = unit;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Erro ao buscar produto na Open Food Facts:", err);
       }
 
-      return reply.send({
-        success: true,
-        data: insertedProduct
-      });
+      if (!existingProduct) {
+        // Insere novo produto
+        const newProduct = {
+          ean,
+          name,
+          brand,
+          unit_weight_grams,
+          unit_type
+        };
+
+        const { data: insertedProduct, error: insertError } = await supabase
+          .from("products")
+          .insert([newProduct])
+          .select()
+          .single();
+
+        if (insertError) {
+          return reply.code(500).send({ success: false, error: "Erro ao cadastrar produto padrão", details: insertError.message });
+        }
+
+        return reply.send({
+          success: true,
+          data: insertedProduct
+        });
+      } else if (enriched) {
+        // Atualiza produto existente com os dados enriquecidos
+        const { data: updatedProduct, error: updateError } = await supabase
+          .from("products")
+          .update({
+            name,
+            brand,
+            unit_weight_grams,
+            unit_type
+          })
+          .eq("ean", ean)
+          .select()
+          .single();
+
+        if (!updateError && updatedProduct) {
+          return reply.send({
+            success: true,
+            data: updatedProduct
+          });
+        }
+      }
     }
 
     return reply.send({
