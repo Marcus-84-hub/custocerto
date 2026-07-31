@@ -116,7 +116,9 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         }
         onClose();
       } else {
-        throw new Error(resJson.error || 'Nenhum item encontrado na Nota Fiscal.');
+        const errorMsg = resJson.error || 'Nenhum item encontrado na Nota Fiscal.';
+        const details = resJson.details ? ` - ${resJson.details}` : '';
+        throw new Error(`${errorMsg}${details}`);
       }
     } catch (err: any) {
       Alert.alert('Erro ao importar Nota Fiscal', err.message || 'Erro de conexão.');
