@@ -285,10 +285,15 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
       {/* Viewfinder Camera Layer */}
       <div className="relative flex-1 flex flex-col items-center justify-center -mt-12">
-        {/* Real camera video or background mockup image */}
-        {cameraActive ? (
-          <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
-        ) : (
+        {/* Real camera video - always in DOM to avoid ref lifecycle bugs */}
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className={`absolute inset-0 w-full h-full object-cover ${cameraActive ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        />
+        {!cameraActive && (
           <div
             className="absolute inset-0 bg-cover bg-center filter brightness-90"
             style={{
