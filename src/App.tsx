@@ -186,6 +186,33 @@ export default function App() {
     });
   };
 
+  const handleBulkAddToCart = (newItems: Omit<CartItem, 'id' | 'addedAt'>[]) => {
+    setCart((prev) => {
+      const updated = [...prev];
+      newItems.forEach((newItem) => {
+        const existingIdx = updated.findIndex(
+          (item) => item.name.toLowerCase() === newItem.name.toLowerCase() || (newItem.barcode && item.barcode === newItem.barcode)
+        );
+
+        if (existingIdx >= 0) {
+          updated[existingIdx] = {
+            ...updated[existingIdx],
+            quantity: updated[existingIdx].quantity + (newItem.quantity || 1),
+            price: newItem.price,
+          };
+        } else {
+          updated.unshift({
+            ...newItem,
+            id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            addedAt: new Date().toISOString(),
+          } as CartItem);
+        }
+      });
+      return updated;
+    });
+    showToast(`${newItems.length} itens importados com sucesso!`, 'success');
+  };
+
   // Update specific fields of a cart item (detailed edit & spreadsheet edit)
   const handleUpdateCartItem = (id: string, updatedFields: Partial<CartItem>) => {
     setCart((prev) =>
@@ -436,6 +463,7 @@ export default function App() {
         isOpen={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
         onAddToCart={handleAddToCart}
+        onBulkAdd={handleBulkAddToCart}
         onOpenCompareWithOptions={(item) => {
           handleCompareItem(item);
           setIsScannerOpen(false);

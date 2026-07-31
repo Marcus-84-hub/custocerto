@@ -161,6 +161,196 @@ async function startServer() {
     });
   });
 
+  // Rota para extrair itens de Nota Fiscal (NFC-e) via QR Code URL
+  app.post("/api/v1/parse-nfce", async (request, reply) => {
+    const { url } = request.body as { url: string };
+    if (!url) {
+      return reply.code(400).send({ success: false, error: "URL é obrigatória" });
+    }
+
+    // Se for a URL de simulação padrão de teste
+    if (url.includes("43211092702069012896651040001234561001234567")) {
+      const mockItems = [
+        {
+          barcode: "7896094927483",
+          name: "Tamarine Fibras Max Laranja 10 Sachês",
+          brand: "Tamarine",
+          price: 45.90,
+          unitAmount: 7.2,
+          unitType: "g",
+          category: "Higiene",
+          quantity: 1
+        },
+        {
+          barcode: "7891010501058",
+          name: "Detergente Ypê Coco 500ml",
+          brand: "Ypê",
+          price: 2.15,
+          unitAmount: 500,
+          unitType: "ml",
+          category: "Limpeza",
+          quantity: 3
+        },
+        {
+          barcode: "7896005800089",
+          name: "Arroz Tio João Tipo 1 5kg",
+          brand: "Tio João",
+          price: 28.00,
+          unitAmount: 5,
+          unitType: "kg",
+          category: "Alimentos",
+          quantity: 1
+        }
+      ];
+      return reply.send({ success: true, items: mockItems });
+    }
+
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Mobile Safari/537.36"
+        }
+      });
+      if (!response.ok) {
+        throw new Error(`Falha ao acessar o portal SEFAZ: ${response.statusText}`);
+      }
+      const html = await response.text();
+
+      // Scraper flexível de linhas de produto de NFC-e
+      const items: any[] = [];
+      
+      // Regex para buscar o padrão tr id="Item___X" das notas fiscais nacionais
+      const rowRegex = /<tr[^>]*id=["']Item___\d+["'][^>]*>([\s\S]*?)<\/tr>/gi;
+      let match;
+      while ((match = rowRegex.exec(html)) !== null) {
+        const rowHtml = match[1];
+
+        // Título do produto
+        const nameMatch = rowHtml.match(/<span[^>]*class=["']txtTit(?:NoAlign)?["'][^>]*>([\s\S]*?)<\/span>/i);
+        const name = nameMatch ? nameMatch[1].trim().replace(/\s+/g, ' ') : "Produto Não Identificado";
+
+        // Código de barras (EAN/GTIN)
+        const codeMatch = rowHtml.match(/Código:\s*(\d+)/i) || rowHtml.match(/(\d{8,14})/);
+        const barcode = codeMatch ? codeMatch[1].trim() : "";
+
+        // Quantidade
+        const qtyMatch = rowHtml.match(/Qtde?\.?\s*(?:total)?:\s*([\d,.]+)/i) || rowHtml.match(/<td[^>]*>Qtde:\s*([\d,.]+)/i);
+        let quantity = 1;
+        if (qtyMatch) {
+          quantity = parseFloat(qtyMatch[1].replace(',', '.'));
+        }
+
+        // Unidade (Ex: UN, KG, L, FD)
+        const unitMatch = rowHtml.match(/(?:Unidade|UN):\s*([a-zA-Z]+)/i);
+        const unitType = unitMatch ? unitMatch[1].trim().toLowerCase() : "un";
+
+        // Valor unitário
+        const priceMatch = rowHtml.match(/Vl\.\s*(?:Unit|Val)\.?\s*:\s*([\d,.]+)/i) || rowHtml.match(/valor">([\d,.]+)/i);
+        let price = 1.0;
+        if (priceMatch) {
+          price = parseFloat(priceMatch[1].replace(',', '.'));
+        }
+
+        // Guess category
+        let category = "Outros";
+        const lowerName = name.toLowerCase();
+        if (lowerName.includes("detergente") || lowerName.includes("limpeza") || lowerName.includes("sabonete") || lowerName.includes("ypê") || lowerName.includes("amaciante")) {
+          category = "Limpeza";
+        } else if (lowerName.includes("tamarine") || lowerName.includes("remedio") || lowerName.includes("sachê") || lowerName.includes("shampoo")) {
+          category = "Higiene";
+        } else if (lowerName.includes("arroz") || lowerName.includes("feijao") || lowerName.includes("macarrao") || lowerName.includes("alimento")) {
+          category = "Alimentos";
+        }
+
+        items.push({
+          barcode,
+          name,
+          brand: "Desconhecida",
+          price,
+          unitAmount: 1,
+          unitType,
+          category,
+          quantity
+        });
+      }
+
+      // Se não encontrou usando tr id="Item___X", tenta buscar por classe de estilo genérica
+      if (items.length === 0) {
+        const simpleRowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+        let simpleMatch;
+        while ((simpleMatch = simpleRowRegex.exec(html)) !== null) {
+          const rowHtml = simpleMatch[1];
+          if (rowHtml.includes("class=\"txtTit\"") || rowHtml.includes("class=\"txtPro\"")) {
+            const nameMatch = rowHtml.match(/<span[^>]*class=["']txtTit(?:NoAlign)?["'][^>]*>([\s\S]*?)<\/span>/i);
+            const name = nameMatch ? nameMatch[1].trim().replace(/\s+/g, ' ') : "";
+            if (!name) continue;
+
+            const codeMatch = rowHtml.match(/Código:\s*(\d+)/i) || rowHtml.match(/(\d{8,14})/);
+            const barcode = codeMatch ? codeMatch[1].trim() : "";
+
+            const qtyMatch = rowHtml.match(/Qtde?\.?\s*(?:total)?:\s*([\d,.]+)/i);
+            const quantity = qtyMatch ? parseFloat(qtyMatch[1].replace(',', '.')) : 1;
+
+            const priceMatch = rowHtml.match(/Vl\.\s*(?:Unit|Val)\.?\s*:\s*([\d,.]+)/i);
+            const price = priceMatch ? parseFloat(priceMatch[1].replace(',', '.')) : 1.0;
+
+            items.push({
+              barcode,
+              name,
+              brand: "Desconhecida",
+              price,
+              unitAmount: 1,
+              unitType: "un",
+              category: "Outros",
+              quantity
+            });
+          }
+        }
+      }
+
+      // Enriquecer itens usando a API Open Food Facts se tiverem código EAN
+      for (const item of items) {
+        if (item.barcode && item.barcode.length >= 8) {
+          // Busca primeiro no nosso Supabase local
+          const { data: dbProd } = await supabase
+            .from("products")
+            .select("*")
+            .eq("ean", item.barcode)
+            .single();
+
+          if (dbProd) {
+            item.name = dbProd.name;
+            item.brand = dbProd.brand;
+            item.unitAmount = dbProd.unit_weight_grams;
+            item.unitType = dbProd.unit_type;
+          } else {
+            // Tenta buscar no Open Food Facts e enriquecer
+            try {
+              const offResponse = await fetch(`https://world.openfoodfacts.org/api/v2/product/${item.barcode}.json`);
+              if (offResponse.ok) {
+                const offData = await offResponse.json();
+                if (offData.status === 1 && offData.product) {
+                  const p = offData.product;
+                  item.name = p.product_name_pt || p.product_name || item.name;
+                  item.brand = p.brands || p.brand_owner || "Desconhecida";
+                  if (p.net_weight_value) {
+                    item.unitAmount = Number(p.net_weight_value);
+                    item.unitType = p.net_weight_unit || 'g';
+                  }
+                }
+              }
+            } catch {}
+          }
+        }
+      }
+
+      return reply.send({ success: true, items });
+    } catch (err: any) {
+      console.error("Erro ao analisar NFC-e:", err);
+      return reply.code(500).send({ success: false, error: "Erro ao processar Nota Fiscal", details: err.message });
+    }
+  });
+
   // Rota de Preços / Gôndola (Crowdsourcing)
   app.post("/api/v1/prices", async (request, reply) => {
     const { ean, price, supermarket_name, latitude, longitude } = request.body as {

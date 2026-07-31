@@ -46,6 +46,7 @@ interface BarcodeScannerModalProps {
   onClose: () => void;
   onAddToCart: (item: Omit<CartItem, 'id' | 'addedAt'>) => void;
   onOpenCompareWithOptions?: (item: CartItem) => void;
+  onBulkAdd?: (items: Omit<CartItem, 'id' | 'addedAt'>[]) => void;
 }
 
 // Configuração do IP do Backend (Substitua pelo IP local do seu computador para testar no dispositivo físico)
@@ -56,12 +57,14 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   onClose,
   onAddToCart,
   onOpenCompareWithOptions,
+  onBulkAdd,
 }) => {
   console.log('BarcodeScannerModal rendering!');
   const [permission, requestPermission] = useCameraPermissions();
   const [detectedProduct, setDetectedProduct] = useState<PreseedProduct | null>(null);
   const [isScanning, setIsScanning] = useState(true);
   const [isAnalyzingPhoto, setIsAnalyzingPhoto] = useState(false);
+  const [isParsingNfce, setIsParsingNfce] = useState(false);
   const [useRealCamera, setUseRealCamera] = useState(true);
   
   const cameraRef = useRef<any>(null);
@@ -97,8 +100,38 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     }, 450);
   };
 
+  const handleNfceScanned = async (url: string) => {
+    setIsScanning(false);
+    setIsParsingNfce(true);
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/v1/parse-nfce`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const resJson = await response.json();
+      if (resJson.success && resJson.items && resJson.items.length > 0) {
+        if (onBulkAdd) {
+          onBulkAdd(resJson.items);
+        }
+        onClose();
+      } else {
+        throw new Error(resJson.error || 'Nenhum item encontrado na Nota Fiscal.');
+      }
+    } catch (err: any) {
+      Alert.alert('Erro ao importar Nota Fiscal', err.message || 'Erro de conexão.');
+      setIsScanning(true);
+    } finally {
+      setIsParsingNfce(false);
+    }
+  };
+
   const handleBarcodeScannedReal = ({ data }: { data: string }) => {
     if (!isScanning) return;
+    if (data.startsWith('http://') || data.startsWith('https://')) {
+      handleNfceScanned(data);
+      return;
+    }
     setIsScanning(false);
     playBeep();
     
@@ -241,7 +274,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
               style={StyleSheet.absoluteFill}
               facing="back"
               barcodeScannerSettings={{
-                barcodeTypes: ['ean13', 'ean8', 'upc_a'],
+                barcodeTypes: ['ean13', 'ean8', 'upc_a', 'qr'],
               }}
               onBarcodeScanned={isScanning ? handleBarcodeScannedReal : undefined}
             />
@@ -275,6 +308,12 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           {!useRealCamera && (
             <View style={styles.presetButtons}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetScroll}>
+                <TouchableOpacity
+                  onPress={() => handleNfceScanned('https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx?chNFe=43211092702069012896651040001234561001234567')}
+                  style={[styles.presetItem, { backgroundColor: '#d97706', borderColor: '#d97706' }]}
+                >
+                  <Text style={styles.presetItemText}>🧾 Simular Nota (Sefaz)</Text>
+                </TouchableOpacity>
                 {POPULAR_BARCODES.map((prod) => (
                   <TouchableOpacity
                     key={prod.barcode}
@@ -305,7 +344,12 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
         {/* Bottom Sheet Details */}
         <View style={styles.bottomSheet}>
-          {isAnalyzingPhoto ? (
+          {isParsingNfce ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#d97706" />
+              <Text style={styles.loadingText}>Importando Nota Fiscal...</Text>
+            </View>
+          ) : isAnalyzingPhoto ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#006e28" />
               <Text style={styles.loadingText}>Analisando etiqueta com IA...</Text>

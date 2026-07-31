@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { BrowserBarcodeReader } from '@zxing/library';
+import { BrowserMultiFormatReader } from '@zxing/library';
 import { X, Camera, Zap, Sparkles, ShoppingCart, Scale, Upload, Image as ImageIcon } from 'lucide-react';
 import { CartItem } from '../types';
 import { POPULAR_BARCODES, PreseedProduct } from '../data/mockDatabase';
@@ -11,6 +11,7 @@ interface BarcodeScannerModalProps {
   onClose: () => void;
   onAddToCart: (item: Omit<CartItem, 'id' | 'addedAt'>) => void;
   onOpenCompareWithOptions?: (item: CartItem) => void;
+  onBulkAdd?: (items: Omit<CartItem, 'id' | 'addedAt'>[]) => void;
 }
 
 let sharedAudioCtx: AudioContext | null = null;
@@ -67,10 +68,12 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   onClose,
   onAddToCart,
   onOpenCompareWithOptions,
+  onBulkAdd,
 }) => {
   const [detectedProduct, setDetectedProduct] = useState<PreseedProduct | null>(null);
   const [isScanning, setIsScanning] = useState(true);
   const [isAnalyzingPhoto, setIsAnalyzingPhoto] = useState(false);
+  const [isParsingNfce, setIsParsingNfce] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -81,12 +84,47 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     setDebugLog(prev => prev + '\n' + msg);
   };
 
+  const handleNfceScanned = async (url: string) => {
+    setIsScanning(false);
+    setIsParsingNfce(true);
+    logDebug('NFC-e: URL detected -> ' + url);
+    playBeep();
+    try {
+      const response = await fetch('/api/v1/parse-nfce', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const resJson = await response.json();
+      if (resJson.success && resJson.items && resJson.items.length > 0) {
+        logDebug(`NFC-e: Successfully parsed ${resJson.items.length} items.`);
+        if (onBulkAdd) {
+          onBulkAdd(resJson.items);
+        }
+        onClose();
+      } else {
+        throw new Error(resJson.error || 'Nenhum item encontrado na Nota Fiscal.');
+      }
+    } catch (err: any) {
+      logDebug('NFC-e error: ' + err.message);
+      alert('Erro ao importar Nota Fiscal: ' + err.message);
+      setIsScanning(true);
+    } finally {
+      setIsParsingNfce(false);
+    }
+  };
+
   const isScanningRef = useRef(isScanning);
   useEffect(() => {
     isScanningRef.current = isScanning;
   }, [isScanning]);
 
   const handleBarcodeScannedReal = async (data: string) => {
+    if (data.startsWith('http://') || data.startsWith('https://')) {
+      handleNfceScanned(data);
+      return;
+    }
+
     setIsScanning(false);
     playBeep();
 
@@ -132,7 +170,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   useEffect(() => {
     let activeStream: MediaStream | null = null;
     let isComponentMounted = true;
-    let codeReader: BrowserBarcodeReader | null = null;
+    let codeReader: BrowserMultiFormatReader | null = null;
 
     const startCamera = async () => {
       try {
@@ -149,7 +187,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           setCameraActive(true);
           logDebug('Camera: srcObject set.');
 
-          codeReader = new BrowserBarcodeReader();
+          codeReader = new BrowserMultiFormatReader();
           logDebug('ZXing: Reader initialized.');
           
           codeReader.decodeFromVideoElementContinuously(videoRef.current, (result, error) => {
@@ -323,6 +361,12 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
         {/* Quick Barcode Selector for Demo Testing */}
         <div className="relative z-10 mt-4 px-4 w-full max-w-xs flex items-center gap-2 overflow-x-auto no-scrollbar py-2">
+          <button
+            onClick={() => handleNfceScanned('https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx?chNFe=43211092702069012896651040001234561001234567')}
+            className="flex-shrink-0 bg-amber-500/80 hover:bg-amber-600/90 text-white text-[11px] font-bold px-3 py-1.5 rounded-full border border-white/20 active:scale-95 transition-all whitespace-nowrap"
+          >
+            🧾 Simular Nota
+          </button>
           {POPULAR_BARCODES.map((prod) => (
             <button
               key={prod.barcode}
@@ -356,7 +400,15 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
       {/* Bottom Sheet - Detected Product Card */}
       <div className="relative z-30 max-w-md mx-auto w-full px-4 pb-6">
-        {isAnalyzingPhoto ? (
+        {isParsingNfce ? (
+          <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-6 text-center space-y-3 shadow-2xl">
+            <Sparkles className="w-8 h-8 text-amber-500 animate-spin mx-auto" />
+            <p className="font-bold text-base text-[#1a1b1f] dark:text-white">
+              Importando itens da Nota Fiscal...
+            </p>
+            <p className="text-xs text-zinc-400">Extraindo produtos e preços da SEFAZ</p>
+          </div>
+        ) : isAnalyzingPhoto ? (
           <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-6 text-center space-y-3 shadow-2xl">
             <Sparkles className="w-8 h-8 text-[#006e28] animate-spin mx-auto" />
             <p className="font-bold text-base text-[#1a1b1f] dark:text-white">

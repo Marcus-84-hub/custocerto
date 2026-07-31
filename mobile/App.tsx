@@ -42,6 +42,7 @@ export default function App() {
     listName,
     listCreatedAt,
     addItem,
+    addItemsBulk,
     removeItem,
     updateQuantity,
     updateCartItem,
@@ -213,6 +214,10 @@ export default function App() {
         isOpen={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
         onAddToCart={addItem}
+        onBulkAdd={(items) => {
+          addItemsBulk(items);
+          Alert.alert('Nota Importada', `${items.length} itens adicionados com sucesso!`);
+        }}
         onOpenCompareWithOptions={(item) => {
           handleCompareItem(item);
           setIsScannerOpen(false);

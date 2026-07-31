@@ -14,6 +14,7 @@ interface CartState {
   listCreatedAt: string;
   planningList: CartItem[];
   addItem: (item: Omit<CartItem, 'id' | 'addedAt'>) => void;
+  addItemsBulk: (items: Omit<CartItem, 'id' | 'addedAt'>[]) => void;
   removeItem: (id: string) => void;
   updateQuantity: (id: string, delta: number) => void;
   updateCartItem: (id: string, updatedFields: Partial<CartItem>) => void;
@@ -72,6 +73,32 @@ export const useCartStore = create<CartState>()(
         return {
           cart: [createdItem, ...state.cart],
         };
+      }),
+
+      addItemsBulk: (newItems) => set((state) => {
+        const updated = [...state.cart];
+        newItems.forEach((newItem) => {
+          const existingIdx = updated.findIndex(
+            (item) =>
+              item.name.toLowerCase() === newItem.name.toLowerCase() ||
+              (newItem.barcode && item.barcode === newItem.barcode)
+          );
+
+          if (existingIdx >= 0) {
+            updated[existingIdx] = {
+              ...updated[existingIdx],
+              quantity: updated[existingIdx].quantity + (newItem.quantity || 1),
+              price: newItem.price,
+            };
+          } else {
+            updated.unshift({
+              ...newItem,
+              id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+              addedAt: new Date().toISOString(),
+            } as CartItem);
+          }
+        });
+        return { cart: updated };
       }),
 
       removeItem: (id) => set((state) => ({
