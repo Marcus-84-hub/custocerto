@@ -75,6 +75,12 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [debugLog, setDebugLog] = useState<string>('Init...');
+  const logDebug = (msg: string) => {
+    console.log(msg);
+    setDebugLog(prev => prev + '\n' + msg);
+  };
+
   const isScanningRef = useRef(isScanning);
   useEffect(() => {
     isScanningRef.current = isScanning;
@@ -128,7 +134,9 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
     const startCamera = async () => {
       try {
+        logDebug('Camera: Requesting stream...');
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        logDebug('Camera: Stream acquired.');
         if (!isComponentMounted) {
           stream.getTracks().forEach(track => track.stop());
           return;
@@ -137,22 +145,31 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           setCameraActive(true);
+          logDebug('Camera: srcObject set.');
 
           codeReader = new BrowserBarcodeReader();
+          logDebug('ZXing: Reader initialized.');
+          
           codeReader.decodeFromVideoElementContinuously(videoRef.current, (result, error) => {
             if (result && isComponentMounted && isScanningRef.current) {
               const scannedData = result.getText();
+              logDebug('ZXing: Scanned -> ' + scannedData);
               handleBarcodeScannedReal(scannedData);
             }
+            if (error && error.message && !error.message.includes('No MultiFormatReader')) {
+              logDebug('ZXing error: ' + error.message);
+            }
           });
+          logDebug('ZXing: decode loop active.');
         }
-      } catch (e) {
-        console.warn('Camera access error or unsupported in environment:', e);
+      } catch (e: any) {
+        logDebug('Camera error: ' + (e.message || e));
       }
     };
 
     if (isOpen) {
       setIsScanning(true);
+      setDebugLog('Open: Initializing...');
       initAudioContext();
       startCamera();
 
@@ -258,6 +275,12 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         <div className="bg-[#006e28]/80 backdrop-blur-md px-3 py-1 rounded-full border border-white/20 text-xs font-bold text-white">
           Modo Bipagem
         </div>
+      </div>
+
+      {/* Debug Logs Overlay */}
+      <div className="absolute top-22 left-4 right-4 z-50 bg-black/85 text-[10px] text-emerald-400 p-2.5 rounded-xl font-mono max-h-32 overflow-y-auto pointer-events-none border border-emerald-500/20 whitespace-pre-line leading-relaxed shadow-lg">
+        <strong>Debug Monitor:</strong>
+        {debugLog}
       </div>
 
       {/* Viewfinder Camera Layer */}
